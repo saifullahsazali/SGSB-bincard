@@ -119,6 +119,11 @@ if ($selected_item_id > 0) {
         <?php endif; ?>
     </select>
     <a href="add_item.php" class="btn btn-blue">+ Tambah Item Baharu</a>
+<!-- Butang Export to Excel -->
+<a href="export_excel.php<?= isset($_GET['item_id']) ? '?item_id='.$_GET['item_id'] : ''; ?>" 
+   class="btn btn-success mb-3" style="background-color: #198754; color: white; padding: 8px 12px; text-decoration: none; border-radius: 4px;">
+   📊 Eksport ke Excel
+</a>
 </div>
 
 <?php if ($item): ?>
