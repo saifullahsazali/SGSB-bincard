@@ -63,8 +63,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_transaction'])) {
 
 // Ambil maklumat item yang dipilih
 $item = null;
+$latest_balance = 0;
+$par_warning = false;
+
 if ($selected_item_id > 0) {
     $item = $conn->query("SELECT * FROM items WHERE id = $selected_item_id")->fetch_assoc();
+
+    if ($item) {
+        $latest_balance_result = $conn->query("SELECT balance FROM stock_transactions WHERE item_id = $selected_item_id ORDER BY id DESC LIMIT 1");
+        if ($latest_balance_result && $latest_balance_result->num_rows > 0) {
+            $latest_balance = (int)$latest_balance_result->fetch_assoc()['balance'];
+        }
+
+        $par_level = (int)$item['par_level'];
+        $par_warning = $latest_balance <= $par_level;
+    }
 }
 ?>
 
@@ -145,8 +158,23 @@ if ($selected_item_id > 0) {
         <div><strong>Min Level:</strong> <?= $item['min_level'] ?></div>
         <div><strong>Max Level:</strong> <?= $item['max_level'] ?></div>
         <div><strong>PAR Level:</strong> <?= $item['par_level'] ?></div>
+        <div><strong>Current Balance:</strong><br><?= $latest_balance ?></div>
         <div><strong>Location:</strong><br><?= htmlspecialchars($item['location']) ?></div>
+        <div>
+            <strong>PAR Status:</strong><br>
+            <?php if ($par_warning): ?>
+                <span style="color: #b22222; font-weight: bold;">⚠️ AMARAN PAR LEVEL</span>
+            <?php else: ?>
+                <span style="color: #1f7a1f; font-weight: bold;">✅ Dalam keadaan baik</span>
+            <?php endif; ?>
+        </div>
     </div>
+
+    <?php if ($par_warning): ?>
+        <div style="margin-top: 15px; padding: 12px 15px; border-left: 6px solid #d9534f; background: #fff3f3; color: #7a1f1f; border-radius: 6px; font-weight: bold;">
+            AMARAN PAR LEVEL: Baki semasa item ini ialah <?= $latest_balance ?> dan berada pada atau di bawah PAR Level <?= $item['par_level'] ?>.
+        </div>
+    <?php endif; ?>
 </div>
 
 <!-- Borang Transaksi Stok -->
@@ -155,13 +183,13 @@ if ($selected_item_id > 0) {
     <form method="POST">
         <input type="hidden" name="item_id" value="<?= $item['id'] ?>">
         <div class="form-grid">
-            <div class="form-group"><label>Lot No:</label><input type="text" name="lot_no" required></div>
+            <div class="form-group"><label>Lot No:</label><input type="text" name="lot_no" required placeholder="Masukkan lot no"></div>
             <div class="form-group"><label>Tarikh Luput:</label><input type="date" name="expiry_date"></div>
-            <div class="form-group"><label>Stock In (Qty):</label><input type="number" name="stock_in_qty" value="0"></div>
+            <div class="form-group"><label>Stock In (Qty):</label><input type="number" name="stock_in_qty" value="" placeholder="0" data-default-value="0"></div>
             <div class="form-group"><label>Tarikh Terima:</label><input type="date" name="date_received"></div>
-            <div class="form-group"><label>Stock Out (Qty):</label><input type="number" name="stock_out_qty" value="0"></div>
+            <div class="form-group"><label>Stock Out (Qty):</label><input type="number" name="stock_out_qty" value="" placeholder="0" data-default-value="0"></div>
             <div class="form-group"><label>Tarikh Keluar:</label><input type="date" name="date_out"></div>
-            <div class="form-group"><label>Initials:</label><input type="text" name="initials" required></div>
+            <div class="form-group"><label>Initials:</label><input type="text" name="initials" required placeholder="Masukkan initials"></div>
             <div class="form-group">
                 <label>Ujian Penerimaan?</label>
                 <select name="acceptance_test_performed">
@@ -234,5 +262,18 @@ if ($selected_item_id > 0) {
     </div>
 <?php endif; ?>
 
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('input[data-default-value]').forEach(function (field) {
+            const defaultValue = field.dataset.defaultValue;
+
+            field.addEventListener('focus', function () {
+                if (this.value === defaultValue || this.value === '') {
+                    this.value = '';
+                }
+            });
+        });
+    });
+</script>
 </body>
 </html>
