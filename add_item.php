@@ -1,24 +1,29 @@
 <?php
 include 'db.php';
 
+$show_success = false;
+$new_id = null;
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_item'])) {
-    $item_name = $_POST['item_name'];
-    $ref_number = $_POST['ref_number'];
-    $uom = $_POST['uom'];
-    $min_level = (int)$_POST['min_level'];
-    $max_level = (int)$_POST['max_level'];
-    $par_level = (int)$_POST['par_level'];
+    $item_name    = $_POST['item_name'];
+    $ref_number   = $_POST['ref_number'];
+    $uom          = $_POST['uom'];
+    $min_level    = (int)$_POST['min_level'];
+    $max_level    = (int)$_POST['max_level'];
+    $par_level    = (int)$_POST['par_level'];
     $ordering_qty = (int)$_POST['ordering_qty'];
-    $lab_branch = $_POST['lab_branch'];
-    $location = $_POST['location'];
+    $lab_branch   = $_POST['lab_branch'];
+    $location     = $_POST['location'];
 
     $stmt = $conn->prepare("INSERT INTO items (item_name, ref_number, uom, min_level, max_level, par_level, ordering_qty, lab_branch, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
     $stmt->bind_param("sssiiiiss", $item_name, $ref_number, $uom, $min_level, $max_level, $par_level, $ordering_qty, $lab_branch, $location);
-    $stmt->execute();
-
-    $new_id = $stmt->insert_id;
-    header("Location: index.php?item_id=" . $new_id);
-    exit();
+    
+    if ($stmt->execute()) {
+        $new_id = $stmt->insert_id;
+        $show_success = true;
+    } else {
+        echo "<script>alert('Ralat: " . addslashes($stmt->error) . "');</script>";
+    }
 }
 ?>
 
@@ -27,6 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_item'])) {
 <head>
     <meta charset="UTF-8">
     <title>Tambah Item Baharu - Bin Card</title>
+    <!-- SweetAlert2 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f6f9; }
         .card { background: white; padding: 20px; border-radius: 8px; max-width: 600px; margin: auto; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
@@ -42,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_item'])) {
 
 <div class="card">
     <h2>Daftar Item / Bahan Ujian Baharu</h2>
-    <form method="POST">
+    <form action="add_item.php" method="POST">
         <div class="form-group"><label>Nama Item (Name of Item):</label><input type="text" name="item_name" required placeholder="cth: PCR Mastermix"></div>
         <div class="form-group"><label>Ref Number:</label><input type="text" name="ref_number" placeholder="cth: REF-9901"></div>
         <div class="form-group"><label>Unit of Measure (UOM):</label><input type="text" name="uom" placeholder="cth: Vials / Kit / Box"></div>
@@ -59,6 +66,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_item'])) {
         <a href="index.php" class="btn btn-secondary">Kembali</a>
     </form>
 </div>
+
+<?php if ($show_success): ?>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        Swal.fire({
+            title: 'Berjaya!',
+            text: 'Item baharu telah berjaya didaftarkan.',
+            icon: 'success',
+            confirmButtonText: 'OK',
+            confirmButtonColor: '#003366'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = 'index.php?item_id=<?= $new_id ?>';
+            }
+        });
+    });
+</script>
+<?php endif; ?>
 
 </body>
 </html>
