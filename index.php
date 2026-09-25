@@ -5,6 +5,19 @@ include 'db.php';
 $success_message = $_SESSION['success_message'] ?? null;
 unset($_SESSION['success_message']);
 
+// PROSES PADAM ITEM DAN SEMUA REKOD TRANSAKSINYA
+if (isset($_GET['delete_item_id'])) {
+    $delete_item_id = (int)$_GET['delete_item_id'];
+
+    if ($delete_item_id > 0) {
+        $conn->query("DELETE FROM stock_transactions WHERE item_id = $delete_item_id");
+        $conn->query("DELETE FROM items WHERE id = $delete_item_id");
+    }
+
+    header("Location: index.php");
+    exit();
+}
+
 // Ambil senarai semua item untuk dropdown
 $all_items = $conn->query("SELECT id, item_name, ref_number FROM items ORDER BY item_name ASC");
 
@@ -275,6 +288,9 @@ if ($selected_item_id > 0) {
         <?php endif; ?>
     </select>
     <a href="add_item.php" class="btn btn-blue">+ Tambah Item Baharu</a>
+    <?php if ($item): ?>
+        <a href="index.php?delete_item_id=<?= $item['id'] ?>" class="btn btn-danger" style="padding: 9px 12px; font-size: 13px;" onclick="return confirm('AMARAN: Padam item <?= htmlspecialchars(addslashes($item['item_name']), ENT_QUOTES) ?> dan semua rekod transaksinya? Tindakan ini tidak boleh dibuat semula.');">Padam Item</a>
+    <?php endif; ?>
 <!-- Butang Export to Excel -->
 <a href="export_excel.php<?= isset($_GET['item_id']) ? '?item_id='.$_GET['item_id'] : ''; ?>" 
    class="btn btn-success mb-3" style="background-color: #198754; color: white; padding: 8px 12px; text-decoration: none; border-radius: 4px;">
