@@ -1,5 +1,9 @@
 <?php
+session_start();
 include 'db.php';
+
+$success_message = $_SESSION['success_message'] ?? null;
+unset($_SESSION['success_message']);
 
 // Ambil senarai semua item untuk dropdown
 $all_items = $conn->query("SELECT id, item_name, ref_number FROM items ORDER BY item_name ASC");
@@ -55,8 +59,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_transaction'])) {
 
     $stmt = $conn->prepare("INSERT INTO stock_transactions (item_id, lot_no, expiry_date, stock_in_qty, date_received, stock_out_qty, date_out, balance, initials, acceptance_test_performed, acceptance_test_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     $stmt->bind_param("issisisisss", $item_id, $lot_no, $expiry_date, $stock_in_qty, $date_received, $stock_out_qty, $date_out, $new_balance, $initials, $acc_test, $acc_date);
-    $stmt->execute();
-    
+    if ($stmt->execute()) {
+        $_SESSION['success_message'] = 'Rekod transaksi stok berjaya disimpan.';
+    } else {
+        $_SESSION['success_message'] = 'Rekod tidak berjaya disimpan: ' . $stmt->error;
+    }
+
     header("Location: index.php?item_id=" . $item_id);
     exit();
 }
@@ -65,6 +73,35 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_transaction'])) {
 $item = null;
 $latest_balance = 0;
 $par_warning = false;
+$expiry_warnings = [];
+$dashboard_expiry_warnings = [];
+$dashboard_par_warnings = [];
+$today = new DateTimeImmutable('today');
+
+$dashboard_items = $conn->query("SELECT items.id, items.item_name, items.ref_number, items.par_level, COALESCE((SELECT balance FROM stock_transactions WHERE stock_transactions.item_id = items.id ORDER BY stock_transactions.id DESC LIMIT 1), 0) AS current_balance FROM items ORDER BY items.item_name ASC");
+if ($dashboard_items) {
+    while ($dashboard_item = $dashboard_items->fetch_assoc()) {
+        if ((int)$dashboard_item['current_balance'] <= (int)$dashboard_item['par_level']) {
+            $dashboard_par_warnings[] = $dashboard_item;
+        }
+    }
+}
+
+$dashboard_expiry_records = $conn->query("SELECT stock_transactions.lot_no, stock_transactions.expiry_date, items.id AS item_id, items.item_name, items.ref_number FROM stock_transactions INNER JOIN items ON items.id = stock_transactions.item_id WHERE stock_transactions.expiry_date IS NOT NULL ORDER BY stock_transactions.expiry_date ASC");
+if ($dashboard_expiry_records) {
+    while ($dashboard_expiry_record = $dashboard_expiry_records->fetch_assoc()) {
+        $dashboard_expiry_date = DateTimeImmutable::createFromFormat('Y-m-d', $dashboard_expiry_record['expiry_date']);
+        if (!$dashboard_expiry_date) {
+            continue;
+        }
+
+        $dashboard_days_until_expiry = (int)$today->diff($dashboard_expiry_date)->format('%r%a');
+        if ($dashboard_days_until_expiry <= 10) {
+            $dashboard_expiry_record['days_until_expiry'] = $dashboard_days_until_expiry;
+            $dashboard_expiry_warnings[] = $dashboard_expiry_record;
+        }
+    }
+}
 
 if ($selected_item_id > 0) {
     $item = $conn->query("SELECT * FROM items WHERE id = $selected_item_id")->fetch_assoc();
@@ -77,6 +114,23 @@ if ($selected_item_id > 0) {
 
         $par_level = (int)$item['par_level'];
         $par_warning = $latest_balance <= $par_level;
+
+        $expiry_records = $conn->query("SELECT lot_no, expiry_date FROM stock_transactions WHERE item_id = $selected_item_id AND expiry_date IS NOT NULL ORDER BY expiry_date ASC");
+        while ($expiry_record = $expiry_records->fetch_assoc()) {
+            $expiry_date = DateTimeImmutable::createFromFormat('Y-m-d', $expiry_record['expiry_date']);
+            if (!$expiry_date) {
+                continue;
+            }
+
+            $days_until_expiry = (int)$today->diff($expiry_date)->format('%r%a');
+            if ($days_until_expiry <= 10) {
+                $expiry_warnings[] = [
+                    'lot_no' => $expiry_record['lot_no'],
+                    'expiry_date' => $expiry_record['expiry_date'],
+                    'days_until_expiry' => $days_until_expiry
+                ];
+            }
+        }
     }
 }
 ?>
@@ -86,6 +140,7 @@ if ($selected_item_id > 0) {
 <head>
     <meta charset="UTF-8">
     <title>Sistem Bin Card SGSB-F26a</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f4f6f9; color: #333; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); margin-bottom: 20px; }
@@ -94,12 +149,37 @@ if ($selected_item_id > 0) {
         .header-logo { height: 55px; width: auto; object-fit: contain; }
         .header-text h2 { margin: 0; font-size: 18px; color: #003366; text-transform: uppercase; }
         .header-text h3 { margin: 4px 0 0 0; font-size: 13px; color: #555; font-weight: 600; }
+        .active-item-title { margin: 0 0 15px; padding: 12px 16px; background: #003366; color: white; border-radius: 6px; font-size: 18px; font-weight: 700; }
+        .active-item-title span { display: block; margin-top: 4px; color: #d9e8f5; font-size: 12px; font-weight: 400; }
+        .dashboard { margin-bottom: 20px; }
+        .dashboard h2 { margin: 0 0 12px; color: #003366; font-size: 20px; }
+        .dashboard-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+        .dashboard-stat { padding: 14px; border-radius: 6px; color: white; }
+        .dashboard-stat strong { display: block; font-size: 24px; }
+        .dashboard-stat span { font-size: 12px; }
+        .dashboard-total { background: #003366; }
+        .dashboard-par { background: #b22222; }
+        .dashboard-expiry { background: #e67e22; }
+        .dashboard-content { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .dashboard-panel { padding: 14px; border: 1px solid #d7dee5; border-radius: 6px; background: white; }
+        .dashboard-panel h3 { margin: 0 0 10px; font-size: 14px; color: #003366; }
+        .dashboard-panel ul { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.7; }
+        .dashboard-panel li a { color: #003366; font-weight: bold; text-decoration: none; }
+        .dashboard-empty { color: #1f7a1f; font-size: 12px; }
 
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; background: #eef2f5; padding: 15px; border-radius: 6px; font-size: 13px; }
         .grid div { background: white; padding: 8px 12px; border-radius: 4px; border: 1px solid #e0e0e0; }
         
         .selector-box { background: #d9e2ec; padding: 12px 20px; border-radius: 8px; display: flex; align-items: center; gap: 15px; margin-bottom: 20px; }
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+        .transaction-section { border: 1px solid #d7dee5; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+        .transaction-section h4 { margin: 0 0 10px; font-size: 13px; }
+        .stock-in-section { background: #f2fbf4; border-left: 5px solid #28a745; }
+        .stock-in-section h4 { color: #1f7a1f; }
+        .stock-out-section { background: #fff7f2; border-left: 5px solid #e67e22; }
+        .stock-out-section h4 { color: #a6530b; }
+        .transaction-details { background: #f7f8fa; border-left: 5px solid #003366; }
+        .transaction-details h4 { color: #003366; }
         .form-group { margin-bottom: 5px; }
         label { display: block; font-size: 11px; font-weight: bold; margin-bottom: 4px; color: #444; }
         input, select { width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 12px; }
@@ -116,6 +196,69 @@ if ($selected_item_id > 0) {
     </style>
 </head>
 <body>
+
+<div class="card dashboard">
+    <h2>Dashboard Stok</h2>
+    <div class="dashboard-summary">
+        <div class="dashboard-stat dashboard-total">
+            <strong><?= $all_items->num_rows ?></strong>
+            <span>Jumlah Item</span>
+        </div>
+        <div class="dashboard-stat dashboard-par">
+            <strong><?= count($dashboard_par_warnings) ?></strong>
+            <span>Item Pada / Bawah Tahap PAR</span>
+        </div>
+        <div class="dashboard-stat dashboard-expiry">
+            <strong><?= count($dashboard_expiry_warnings) ?></strong>
+            <span>Lot Luput Dalam 10 Hari / Sudah Luput</span>
+        </div>
+    </div>
+
+    <div class="dashboard-content">
+        <div class="dashboard-panel">
+            <h3>⚠️ Amaran Tarikh Luput</h3>
+            <?php if ($dashboard_expiry_warnings): ?>
+                <ul>
+                    <?php foreach ($dashboard_expiry_warnings as $dashboard_expiry_warning): ?>
+                        <li>
+                            <a href="index.php?item_id=<?= $dashboard_expiry_warning['item_id'] ?>">
+                                <?= htmlspecialchars($dashboard_expiry_warning['item_name']) ?>
+                            </a>
+                            - Lot <?= htmlspecialchars($dashboard_expiry_warning['lot_no']) ?>:
+                            <?php if ($dashboard_expiry_warning['days_until_expiry'] < 0): ?>
+                                sudah luput (<?= htmlspecialchars($dashboard_expiry_warning['expiry_date']) ?>)
+                            <?php elseif ($dashboard_expiry_warning['days_until_expiry'] === 0): ?>
+                                luput hari ini
+                            <?php else: ?>
+                                luput dalam <?= $dashboard_expiry_warning['days_until_expiry'] ?> hari
+                            <?php endif; ?>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php else: ?>
+                <div class="dashboard-empty">Tiada amaran tarikh luput.</div>
+            <?php endif; ?>
+        </div>
+
+        <div class="dashboard-panel">
+            <h3>⚠️ Item Perlu Pesan Stok</h3>
+            <?php if ($dashboard_par_warnings): ?>
+                <ul>
+                    <?php foreach ($dashboard_par_warnings as $dashboard_par_warning): ?>
+                        <li>
+                            <a href="index.php?item_id=<?= $dashboard_par_warning['id'] ?>">
+                                <?= htmlspecialchars($dashboard_par_warning['item_name']) ?>
+                            </a>
+                            - baki <?= (int)$dashboard_par_warning['current_balance'] ?> / Tahap PAR <?= (int)$dashboard_par_warning['par_level'] ?>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php else: ?>
+                <div class="dashboard-empty">Tiada item di bawah Tahap PAR.</div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
 
 <!-- Bar Pilihan Item -->
 <div class="selector-box">
@@ -150,29 +293,51 @@ if ($selected_item_id > 0) {
         </div>
     </div>
 
+    <div class="active-item-title">
+        ITEM SEDANG DIBUKA: <?= htmlspecialchars($item['item_name']) ?>
+        <span>Nombor Rujukan: <?= htmlspecialchars($item['ref_number']) ?></span>
+    </div>
+
     <div class="grid">
-        <div><strong>Name of Item:</strong><br><?= htmlspecialchars($item['item_name']) ?></div>
-        <div><strong>Ref Number:</strong><br><?= htmlspecialchars($item['ref_number']) ?></div>
-        <div><strong>UOM:</strong><br><?= htmlspecialchars($item['uom']) ?></div>
-        <div><strong>Lab Branch:</strong><br><?= htmlspecialchars($item['lab_branch']) ?></div>
-        <div><strong>Min Level:</strong> <?= $item['min_level'] ?></div>
-        <div><strong>Max Level:</strong> <?= $item['max_level'] ?></div>
-        <div><strong>PAR Level:</strong> <?= $item['par_level'] ?></div>
-        <div><strong>Current Balance:</strong><br><?= $latest_balance ?></div>
-        <div><strong>Location:</strong><br><?= htmlspecialchars($item['location']) ?></div>
+        <div><strong>Nama Item:</strong><br><?= htmlspecialchars($item['item_name']) ?></div>
+        <div><strong>Nombor Rujukan:</strong><br><?= htmlspecialchars($item['ref_number']) ?></div>
+        <div><strong>Unit Ukuran:</strong><br><?= htmlspecialchars($item['uom']) ?></div>
+        <div><strong>Cawangan Makmal:</strong><br><?= htmlspecialchars($item['lab_branch']) ?></div>
+        <div><strong>Tahap Minimum:</strong> <?= $item['min_level'] ?></div>
+        <div><strong>Tahap Maksimum:</strong> <?= $item['max_level'] ?></div>
+        <div><strong>Tahap PAR:</strong> <?= $item['par_level'] ?></div>
+        <div><strong>Baki Semasa:</strong><br><?= $latest_balance ?></div>
+        <div><strong>Lokasi:</strong><br><?= htmlspecialchars($item['location']) ?></div>
         <div>
-            <strong>PAR Status:</strong><br>
+            <strong>Status PAR:</strong><br>
             <?php if ($par_warning): ?>
-                <span style="color: #b22222; font-weight: bold;">⚠️ AMARAN PAR LEVEL</span>
+                <span style="color: #b22222; font-weight: bold;">⚠️ AMARAN TAHAP PAR</span>
             <?php else: ?>
                 <span style="color: #1f7a1f; font-weight: bold;">✅ Dalam keadaan baik</span>
             <?php endif; ?>
         </div>
     </div>
 
+    <?php if ($expiry_warnings): ?>
+        <div style="margin-top: 15px; padding: 12px 15px; border-left: 6px solid #e67e22; background: #fff7e6; color: #8a4b08; border-radius: 6px;">
+            <strong>⚠️ AMARAN TARIKH LUPUT</strong>
+            <div style="margin-top: 6px; font-weight: normal;">
+                <?php foreach ($expiry_warnings as $expiry_warning): ?>
+                    <?php if ($expiry_warning['days_until_expiry'] < 0): ?>
+                        <div>Lot <strong><?= htmlspecialchars($expiry_warning['lot_no']) ?></strong> telah luput pada <?= htmlspecialchars($expiry_warning['expiry_date']) ?>.</div>
+                    <?php elseif ($expiry_warning['days_until_expiry'] === 0): ?>
+                        <div>Lot <strong><?= htmlspecialchars($expiry_warning['lot_no']) ?></strong> luput hari ini (<?= htmlspecialchars($expiry_warning['expiry_date']) ?>).</div>
+                    <?php else: ?>
+                        <div>Lot <strong><?= htmlspecialchars($expiry_warning['lot_no']) ?></strong> akan luput dalam <strong><?= $expiry_warning['days_until_expiry'] ?> hari</strong> (<?= htmlspecialchars($expiry_warning['expiry_date']) ?>). Sila rancang order stok.</div>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    <?php endif; ?>
+
     <?php if ($par_warning): ?>
         <div style="margin-top: 15px; padding: 12px 15px; border-left: 6px solid #d9534f; background: #fff3f3; color: #7a1f1f; border-radius: 6px; font-weight: bold;">
-            AMARAN PAR LEVEL: Baki semasa item ini ialah <?= $latest_balance ?> dan berada pada atau di bawah PAR Level <?= $item['par_level'] ?>.
+            AMARAN TAHAP PAR: Baki semasa item ini ialah <?= $latest_balance ?> dan berada pada atau di bawah Tahap PAR <?= $item['par_level'] ?>.
         </div>
     <?php endif; ?>
 </div>
@@ -182,23 +347,44 @@ if ($selected_item_id > 0) {
     <h3 style="color: #003366; margin-top: 0; font-size: 15px;">Tambah Transaksi Stok</h3>
     <form method="POST">
         <input type="hidden" name="item_id" value="<?= $item['id'] ?>">
-        <div class="form-grid">
-            <div class="form-group"><label>Lot No:</label><input type="text" name="lot_no" required placeholder="Masukkan lot no"></div>
-            <div class="form-group"><label>Tarikh Luput:</label><input type="date" name="expiry_date"></div>
-            <div class="form-group"><label>Stock In (Qty):</label><input type="number" name="stock_in_qty" value="" placeholder="0" data-default-value="0"></div>
-            <div class="form-group"><label>Tarikh Terima:</label><input type="date" name="date_received"></div>
-            <div class="form-group"><label>Stock Out (Qty):</label><input type="number" name="stock_out_qty" value="" placeholder="0" data-default-value="0"></div>
-            <div class="form-group"><label>Tarikh Keluar:</label><input type="date" name="date_out"></div>
-            <div class="form-group"><label>Initials:</label><input type="text" name="initials" required placeholder="Masukkan initials"></div>
+        <div class="transaction-section transaction-details">
+            <h4>MAKLUMAT TRANSAKSI</h4>
+            <div class="form-grid">
+                <div class="form-group"><label>Nombor Lot:</label><input type="text" name="lot_no" required placeholder="Masukkan nombor lot"></div>
+                <div class="form-group"><label>Tarikh Luput:</label><input type="date" name="expiry_date"></div>
+            </div>
+        </div>
+
+        <div class="transaction-section stock-in-section">
+            <h4>STOK MASUK</h4>
+            <div class="form-grid">
+                <div class="form-group"><label>Kuantiti Stok Masuk:</label><input type="number" name="stock_in_qty" value="" placeholder="Masukkan kuantiti masuk" data-default-value="0"></div>
+                <div class="form-group"><label>Tarikh Diterima:</label><input type="date" name="date_received"></div>
+            </div>
+        </div>
+
+        <div class="transaction-section stock-out-section">
+            <h4>STOK KELUAR</h4>
+            <div class="form-grid">
+                <div class="form-group"><label>Kuantiti Stok Keluar:</label><input type="number" name="stock_out_qty" value="" placeholder="Masukkan kuantiti keluar" data-default-value="0"></div>
+                <div class="form-group"><label>Tarikh Dikeluarkan:</label><input type="date" name="date_out"></div>
+            </div>
+        </div>
+
+        <div class="transaction-section transaction-details">
+            <h4>PENGESAHAN TRANSAKSI</h4>
+            <div class="form-grid">
+            <div class="form-group"><label>Inisial:</label><input type="text" name="initials" required placeholder="Masukkan inisial"></div>
             <div class="form-group">
                 <label>Ujian Penerimaan?</label>
                 <select name="acceptance_test_performed">
                     <option value="Yes">Yes</option>
                     <option value="No">No</option>
-                    <option value="Not Applicable" selected>Not Applicable</option>
+                    <option value="Not Applicable" selected>Tidak Berkenaan</option>
                 </select>
             </div>
-            <div class="form-group"><label>Tarikh Ujian:</label><input type="date" name="acceptance_test_date"></div>
+            <div class="form-group"><label>Tarikh Ujian Penerimaan:</label><input type="date" name="acceptance_test_date"></div>
+            </div>
         </div>
         <br>
         <button type="submit" name="add_transaction" class="btn">Simpan Rekod</button>
@@ -211,23 +397,23 @@ if ($selected_item_id > 0) {
     <table>
         <thead>
             <tr>
-                <th rowspan="2">NO.</th>
-                <th rowspan="2">LOT NO.</th>
-                <th colspan="2">STOCK IN</th>
-                <th colspan="2">STOCK OUT</th>
-                <th>BALANCE</th>
-                <th rowspan="2">INITIAL</th>
-                <th colspan="2">ACCEPTANCE TEST STATUS</th>
+                <th rowspan="2">BIL.</th>
+                <th rowspan="2">NOMBOR LOT</th>
+                <th colspan="2">STOK MASUK</th>
+                <th colspan="2">STOK KELUAR</th>
+                <th>BAKI</th>
+                <th rowspan="2">INISIAL</th>
+                <th colspan="2">STATUS UJIAN PENERIMAAN</th>
                 <th rowspan="2">TINDAKAN</th>
             </tr>
             <tr>
-                <th>Qty</th>
-                <th>Date Received</th>
-                <th>Qty Out</th>
-                <th>Date Out</th>
-                <th>Qty</th>
-                <th>Performed?</th>
-                <th>Date</th>
+                <th>Kuantiti</th>
+                <th>Tarikh Diterima</th>
+                <th>Kuantiti</th>
+                <th>Tarikh Dikeluarkan</th>
+                <th>Kuantiti</th>
+                <th>Dilaksanakan?</th>
+                <th>Tarikh</th>
             </tr>
         </thead>
         <tbody>
@@ -260,6 +446,20 @@ if ($selected_item_id > 0) {
     <div class="card">
         <p>Sila klik butang <strong>+ Tambah Item Baharu</strong> untuk mendaftarkan item pertama anda.</p>
     </div>
+<?php endif; ?>
+
+<?php if ($success_message): ?>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        Swal.fire({
+            title: <?= json_encode(str_starts_with($success_message, 'Rekod transaksi stok berjaya') ? 'Berjaya!' : 'Ralat') ?>,
+            text: <?= json_encode($success_message) ?>,
+            icon: <?= json_encode(str_starts_with($success_message, 'Rekod transaksi stok berjaya') ? 'success' : 'error') ?>,
+            confirmButtonText: 'OK',
+            confirmButtonColor: '#003366'
+        });
+    });
+</script>
 <?php endif; ?>
 
 <script>
