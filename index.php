@@ -291,10 +291,10 @@ if ($selected_item_id > 0) {
     <?php if ($item): ?>
         <a href="index.php?delete_item_id=<?= $item['id'] ?>" class="btn btn-danger" style="padding: 9px 12px; font-size: 13px;" onclick="return confirm('AMARAN: Padam item <?= htmlspecialchars(addslashes($item['item_name']), ENT_QUOTES) ?> dan semua rekod transaksinya? Tindakan ini tidak boleh dibuat semula.');">Padam Item</a>
     <?php endif; ?>
-<!-- Butang Export to Excel -->
-<a href="export_excel.php<?= isset($_GET['item_id']) ? '?item_id='.$_GET['item_id'] : ''; ?>" 
+<!-- Butang Export semua item -->
+<a href="export_excel.php" 
    class="btn btn-success mb-3" style="background-color: #198754; color: white; padding: 8px 12px; text-decoration: none; border-radius: 4px;">
-   📊 Eksport ke Excel
+    📊 Eksport Semua Item
 </a>
 </div>
 

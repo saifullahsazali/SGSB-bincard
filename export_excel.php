@@ -2,24 +2,19 @@
 <?php
 include 'db.php';
 
-// Ambil parameter penapis dari URL
-$filter_item = isset($_GET['item_id']) ? $_GET['item_id'] : '';
-$search_lot  = isset($_GET['search_lot']) ? trim($_GET['search_lot']) : '';
-
-// Bina kueri SQL
-$query = "SELECT stock_transactions.*, items.item_name 
-          FROM stock_transactions 
-          JOIN items ON stock_transactions.item_id = items.id 
-          WHERE 1=1";
-
-if (!empty($filter_item)) {
-    $query .= " AND stock_transactions.item_id = '$filter_item'";
-}
-if (!empty($search_lot)) {
-    $query .= " AND stock_transactions.lot_no LIKE '%$search_lot%'";
-}
-
-$query .= " ORDER BY stock_transactions.id ASC";
+// Ambil semua item, termasuk item yang belum mempunyai transaksi.
+$query = "SELECT items.id AS item_id, items.item_name, items.ref_number, items.uom,
+                 items.lab_branch, items.location, items.min_level, items.max_level,
+                 items.par_level, items.ordering_qty,
+                 stock_transactions.lot_no, stock_transactions.expiry_date,
+                 stock_transactions.stock_in_qty, stock_transactions.date_received,
+                 stock_transactions.stock_out_qty, stock_transactions.date_out,
+                 stock_transactions.balance, stock_transactions.initials,
+                 stock_transactions.acceptance_test_performed,
+                 stock_transactions.acceptance_test_date
+          FROM items
+          LEFT JOIN stock_transactions ON stock_transactions.item_id = items.id
+          ORDER BY items.item_name ASC, stock_transactions.id ASC";
 $result = $conn->query($query);
 
 // Header muat turun fail Excel
@@ -32,18 +27,27 @@ header("Expires: 0");
 <table border="1">
     <thead>
         <tr>
-            <th colspan="7" style="background-color: #0d6efd; color: white; font-size: 14pt; height: 30px;">
-                REKOD BIN CARD (SGSB-F26a) - LAPORAN STOK
+            <th colspan="16" style="background-color: #0d6efd; color: white; font-size: 14pt; height: 30px;">
+                REKOD BIN CARD (SGSB-F26a) - LAPORAN SEMUA ITEM
             </th>
         </tr>
         <tr style="background-color: #e9ecef; font-weight: bold;">
             <th>No.</th>
             <th>Nama Item</th>
+            <th>No. Rujukan</th>
+            <th>Unit Ukuran</th>
+            <th>Cawangan Makmal</th>
+            <th>Lokasi</th>
             <th>No. Lot / Batch</th>
-            <th>Masuk (In)</th>
-            <th>Keluar (Out)</th>
-            <th>Baki (Balance)</th>
-            <th>Catatan / Penerima</th>
+            <th>Tarikh Luput</th>
+            <th>Stok Masuk</th>
+            <th>Tarikh Diterima</th>
+            <th>Stok Keluar</th>
+            <th>Tarikh Dikeluarkan</th>
+            <th>Baki</th>
+            <th>Inisial</th>
+            <th>Status Ujian Penerimaan</th>
+            <th>Tarikh Ujian</th>
         </tr>
     </thead>
     <tbody>
@@ -51,30 +55,31 @@ header("Expires: 0");
         $no = 1;
         if ($result && $result->num_rows > 0): 
             while ($row = $result->fetch_assoc()): 
-                // Semakan nama lajur kuantiti masuk
-                $in = $row['quantity_in'] ?? $row['qty_in'] ?? $row['in_qty'] ?? 0;
-                
-                // Semakan nama lajur kuantiti keluar
-                $out = $row['quantity_out'] ?? $row['qty_out'] ?? $row['out_qty'] ?? 0;
-                
-                // Semakan nama lajur catatan/remarks
-                $remarks = $row['remarks'] ?? $row['remark'] ?? $row['description'] ?? '';
         ?>
             <tr>
                 <td align="center"><?= $no++; ?></td>
                 <td><?= htmlspecialchars($row['item_name'] ?? ''); ?></td>
+                <td><?= htmlspecialchars($row['ref_number'] ?? ''); ?></td>
+                <td><?= htmlspecialchars($row['uom'] ?? ''); ?></td>
+                <td><?= htmlspecialchars($row['lab_branch'] ?? ''); ?></td>
+                <td><?= htmlspecialchars($row['location'] ?? ''); ?></td>
                 <td align="center"><?= htmlspecialchars($row['lot_no'] ?? ''); ?></td>
-                <td align="center"><?= $in > 0 ? $in : '-'; ?></td>
-                <td align="center"><?= $out > 0 ? $out : '-'; ?></td>
+                <td align="center"><?= htmlspecialchars($row['expiry_date'] ?? '-'); ?></td>
+                <td align="center"><?= ($row['stock_in_qty'] ?? 0) > 0 ? $row['stock_in_qty'] : '-'; ?></td>
+                <td align="center"><?= htmlspecialchars($row['date_received'] ?? '-'); ?></td>
+                <td align="center"><?= ($row['stock_out_qty'] ?? 0) > 0 ? $row['stock_out_qty'] : '-'; ?></td>
+                <td align="center"><?= htmlspecialchars($row['date_out'] ?? '-'); ?></td>
                 <td align="center"><strong><?= $row['balance'] ?? 0; ?></strong></td>
-                <td><?= htmlspecialchars((string)$remarks); ?></td>
+                <td><?= htmlspecialchars($row['initials'] ?? ''); ?></td>
+                <td><?= htmlspecialchars($row['acceptance_test_performed'] ?? ''); ?></td>
+                <td align="center"><?= htmlspecialchars($row['acceptance_test_date'] ?? '-'); ?></td>
             </tr>
         <?php 
             endwhile; 
         else: 
         ?>
             <tr>
-                <td colspan="7" align="center">Tiada rekod dijumpai.</td>
+                <td colspan="16" align="center">Tiada item dijumpai.</td>
             </tr>
         <?php endif; ?>
     </tbody>
