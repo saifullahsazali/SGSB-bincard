@@ -3,6 +3,7 @@ include 'db.php';
 
 $show_success = false;
 $new_id = null;
+$is_ajax_request = isset($_GET['ajax']) && $_GET['ajax'] === '1';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_item'])) {
     $item_name    = $_POST['item_name'];
@@ -15,14 +16,35 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_item'])) {
     $lab_branch   = $_POST['lab_branch'];
     $location     = $_POST['location'];
 
-    $stmt = $conn->prepare("INSERT INTO items (item_name, ref_number, uom, min_level, max_level, par_level, ordering_qty, lab_branch, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("sssiiiiss", $item_name, $ref_number, $uom, $min_level, $max_level, $par_level, $ordering_qty, $lab_branch, $location);
-    
-    if ($stmt->execute()) {
-        $new_id = $stmt->insert_id;
-        $show_success = true;
-    } else {
-        echo "<script>alert('Ralat: " . addslashes($stmt->error) . "');</script>";
+    try {
+        $stmt = $conn->prepare("INSERT INTO items (item_name, ref_number, uom, min_level, max_level, par_level, ordering_qty, lab_branch, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("sssiiiiss", $item_name, $ref_number, $uom, $min_level, $max_level, $par_level, $ordering_qty, $lab_branch, $location);
+
+        if ($stmt->execute()) {
+            $new_id = $stmt->insert_id;
+            if ($is_ajax_request) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => true, 'id' => $new_id]);
+                exit();
+            }
+            $show_success = true;
+        } else {
+            if ($is_ajax_request) {
+                http_response_code(422);
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'Item tidak berjaya disimpan.']);
+                exit();
+            }
+            echo "<script>alert('Ralat: " . addslashes($stmt->error) . "');</script>";
+        }
+    } catch (mysqli_sql_exception $exception) {
+        if ($is_ajax_request) {
+            http_response_code(422);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'Item tidak berjaya disimpan. Sila periksa data dan pangkalan data.']);
+            exit();
+        }
+        throw $exception;
     }
 }
 ?>

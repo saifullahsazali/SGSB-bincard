@@ -18,8 +18,14 @@ if (isset($_GET['delete_item_id'])) {
     exit();
 }
 
-// Ambil senarai semua item untuk dropdown
+// Ambil jumlah item untuk ringkasan dashboard
 $all_items = $conn->query("SELECT id, item_name, ref_number FROM items ORDER BY item_name ASC");
+$sidebar_items = $conn->query("SELECT id, item_name, ref_number, lab_branch FROM items ORDER BY lab_branch ASC, item_name ASC");
+$sidebar_categories = [];
+while ($sidebar_item = $sidebar_items->fetch_assoc()) {
+    $category_name = trim($sidebar_item['lab_branch']) !== '' ? $sidebar_item['lab_branch'] : 'Tanpa kategori';
+    $sidebar_categories[$category_name][] = $sidebar_item;
+}
 
 // Tentukan item yang dipilih
 $selected_item_id = isset($_GET['item_id']) ? (int)$_GET['item_id'] : 0;
@@ -155,8 +161,8 @@ if ($selected_item_id > 0) {
     <title>Sistem Bin Card SGSB-F26a</title>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f4f6f9; color: #333; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 14px; background-color: #f4f6f9; color: #333; }
+        .card { background: white; padding: 14px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); margin-bottom: 12px; }
         
         .header-container { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; border-bottom: 2px solid #003366; padding-bottom: 12px; }
         .header-logo { height: 55px; width: auto; object-fit: contain; }
@@ -164,18 +170,18 @@ if ($selected_item_id > 0) {
         .header-text h3 { margin: 4px 0 0 0; font-size: 13px; color: #555; font-weight: 600; }
         .active-item-title { margin: 0 0 15px; padding: 12px 16px; background: #003366; color: white; border-radius: 6px; font-size: 18px; font-weight: 700; }
         .active-item-title span { display: block; margin-top: 4px; color: #d9e8f5; font-size: 12px; font-weight: 400; }
-        .dashboard { margin-bottom: 20px; }
-        .dashboard h2 { margin: 0 0 12px; color: #003366; font-size: 20px; }
-        .dashboard-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
-        .dashboard-stat { padding: 14px; border-radius: 6px; color: white; }
-        .dashboard-stat strong { display: block; font-size: 24px; }
+        .dashboard { margin-bottom: 12px; }
+        .dashboard h2 { margin: 0 0 9px; color: #003366; font-size: 18px; }
+        .dashboard-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+        .dashboard-stat { padding: 10px; border-radius: 5px; color: white; }
+        .dashboard-stat strong { display: block; font-size: 21px; }
         .dashboard-stat span { font-size: 12px; }
         .dashboard-total { background: #003366; }
         .dashboard-par { background: #b22222; }
         .dashboard-expiry { background: #e67e22; }
-        .dashboard-content { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .dashboard-panel { padding: 14px; border: 1px solid #d7dee5; border-radius: 6px; background: white; }
-        .dashboard-panel h3 { margin: 0 0 10px; font-size: 14px; color: #003366; }
+        .dashboard-content { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .dashboard-panel { padding: 10px; border: 1px solid #d7dee5; border-radius: 5px; background: white; }
+        .dashboard-panel h3 { margin: 0 0 6px; font-size: 13px; color: #003366; }
         .dashboard-panel ul { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.7; }
         .dashboard-panel li a { color: #003366; font-weight: bold; text-decoration: none; }
         .dashboard-empty { color: #1f7a1f; font-size: 12px; }
@@ -183,7 +189,31 @@ if ($selected_item_id > 0) {
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; background: #eef2f5; padding: 15px; border-radius: 6px; font-size: 13px; }
         .grid div { background: white; padding: 8px 12px; border-radius: 4px; border: 1px solid #e0e0e0; }
         
-        .selector-box { background: #d9e2ec; padding: 12px 20px; border-radius: 8px; display: flex; align-items: center; gap: 15px; margin-bottom: 20px; }
+        .workspace-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px; align-items: start; }
+        .item-sidebar { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; background: white; border: 1px solid #d7dee5; border-radius: 6px; padding: 10px; }
+        .item-sidebar h2 { margin: 0 0 8px; color: #003366; font-size: 15px; }
+        .category-group { margin-top: 9px; }
+        .category-heading { margin: 0 0 3px; padding: 5px 7px; background: #eef2f5; border-left: 3px solid #003366; color: #34495e; font-size: 11px; font-weight: 700; }
+        .category-items { display: grid; gap: 2px; }
+        .category-items a { display: block; padding: 5px 7px; border-radius: 3px; color: #34495e; font-size: 11px; line-height: 1.3; text-decoration: none; }
+        .category-items a:hover, .category-items a.active { background: #e3edf6; color: #003366; font-weight: 700; }
+        .workspace-main { min-width: 0; }
+        .selector-box { background: #d9e2ec; padding: 8px 10px; border-radius: 5px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+        .selector-box .btn { padding: 7px 10px; font-size: 12px; }
+        .add-item-dialog { width: min(620px, calc(100vw - 24px)); max-height: calc(100vh - 32px); padding: 18px; border: 0; border-radius: 8px; box-shadow: 0 18px 60px rgba(0,0,0,0.25); }
+        .add-item-dialog::backdrop { background: rgba(15, 29, 43, 0.55); }
+        .modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+        .modal-header h2 { margin: 0; color: #003366; font-size: 18px; }
+        .modal-close { border: 0; background: transparent; color: #445; font-size: 24px; cursor: pointer; line-height: 1; }
+        .add-item-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .add-item-form .form-group { margin: 0; }
+        .add-item-form .form-group-wide, .add-item-actions, .add-item-error { grid-column: 1 / -1; }
+        .add-item-form label { font-size: 12px; }
+        .add-item-form input { padding: 8px; }
+        .add-item-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+        .add-item-actions .btn { padding: 8px 12px; }
+        .btn-secondary { background: #6c757d; }
+        .add-item-error { margin: 0; color: #b22222; font-size: 12px; }
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
         .transaction-section { border: 1px solid #d7dee5; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
         .transaction-section h4 { margin: 0 0 10px; font-size: 13px; }
@@ -202,10 +232,21 @@ if ($selected_item_id > 0) {
         .btn-danger { background-color: #dc3545; padding: 4px 8px; font-size: 11px; border-radius: 3px; }
         .btn:hover { opacity: 0.9; }
 
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; }
+        th, td { border: 1px solid #ccc; padding: 6px; text-align: center; font-size: 11px; }
         th { background-color: #003366; color: white; font-weight: 600; }
         tr:nth-child(even) { background-color: #f9f9f9; }
+        @media (max-width: 760px) {
+            body { margin: 8px; }
+            .workspace-layout { grid-template-columns: 1fr; }
+            .item-sidebar { position: static; max-height: 220px; }
+            .dashboard-summary { grid-template-columns: 1fr; }
+            .dashboard-content { grid-template-columns: 1fr; }
+            .grid { grid-template-columns: repeat(2, 1fr); }
+            .workspace-main { overflow-x: auto; }
+            .add-item-form { grid-template-columns: 1fr; }
+            .add-item-form .form-group-wide, .add-item-actions, .add-item-error { grid-column: auto; }
+        }
     </style>
 </head>
 <body>
@@ -273,27 +314,37 @@ if ($selected_item_id > 0) {
     </div>
 </div>
 
-<!-- Bar Pilihan Item -->
+<div class="workspace-layout">
+<aside class="item-sidebar">
+    <h2>Kategori Item</h2>
+    <?php if (!$sidebar_categories): ?>
+        <div class="dashboard-empty">Belum ada item.</div>
+    <?php else: ?>
+        <?php foreach ($sidebar_categories as $category_name => $category_items): ?>
+            <section class="category-group">
+                <h3 class="category-heading"><?= htmlspecialchars($category_name) ?></h3>
+                <nav class="category-items" aria-label="<?= htmlspecialchars($category_name) ?>">
+                    <?php foreach ($category_items as $sidebar_item): ?>
+                        <a href="index.php?item_id=<?= (int)$sidebar_item['id'] ?>" class="<?= ((int)$sidebar_item['id'] === $selected_item_id) ? 'active' : '' ?>">
+                            <?= htmlspecialchars($sidebar_item['item_name']) ?>
+                        </a>
+                    <?php endforeach; ?>
+                </nav>
+            </section>
+        <?php endforeach; ?>
+    <?php endif; ?>
+</aside>
+<main class="workspace-main">
+
+<!-- Bar Tindakan Item -->
 <div class="selector-box">
-    <label style="font-size: 13px; margin: 0;">PILIH ITEM / BAHAN:</label>
-    <select onchange="location = this.value;" style="width: 320px;">
-        <?php if ($all_items->num_rows == 0): ?>
-            <option>-- Tiada Item Didaftarkan --</option>
-        <?php else: ?>
-            <?php while ($row = $all_items->fetch_assoc()): ?>
-                <option value="index.php?item_id=<?= $row['id'] ?>" <?= ($row['id'] == $selected_item_id) ? 'selected' : '' ?>>
-                    <?= htmlspecialchars($row['item_name']) ?> (<?= htmlspecialchars($row['ref_number']) ?>)
-                </option>
-            <?php endwhile; ?>
-        <?php endif; ?>
-    </select>
-    <a href="add_item.php" class="btn btn-blue">+ Tambah Item Baharu</a>
+    <button type="button" class="btn btn-blue" id="openAddItem">+ Tambah Item Baharu</button>
     <?php if ($item): ?>
         <a href="index.php?delete_item_id=<?= $item['id'] ?>" class="btn btn-danger" style="padding: 9px 12px; font-size: 13px;" onclick="return confirm('AMARAN: Padam item <?= htmlspecialchars(addslashes($item['item_name']), ENT_QUOTES) ?> dan semua rekod transaksinya? Tindakan ini tidak boleh dibuat semula.');">Padam Item</a>
     <?php endif; ?>
 <!-- Butang Export semua item -->
 <a href="export_excel.php" 
-   class="btn btn-success mb-3" style="background-color: #198754; color: white; padding: 8px 12px; text-decoration: none; border-radius: 4px;">
+    class="btn btn-success mb-3" style="background-color: #198754; color: white; padding: 7px 10px; text-decoration: none; border-radius: 4px;">
     📊 Eksport Semua Item
 </a>
 </div>
@@ -463,6 +514,95 @@ if ($selected_item_id > 0) {
         <p>Sila klik butang <strong>+ Tambah Item Baharu</strong> untuk mendaftarkan item pertama anda.</p>
     </div>
 <?php endif; ?>
+</main>
+</div>
+
+<dialog class="add-item-dialog" id="addItemDialog" aria-labelledby="addItemTitle">
+    <div class="modal-header">
+        <h2 id="addItemTitle">Daftar Item / Bahan Ujian Baharu</h2>
+        <button type="button" class="modal-close" id="closeAddItem" aria-label="Tutup">&times;</button>
+    </div>
+    <form id="addItemForm" method="post">
+        <input type="hidden" name="save_item" value="1">
+        <div class="add-item-form">
+            <div class="form-group form-group-wide"><label for="newItemName">Nama Item</label><input id="newItemName" type="text" name="item_name" required placeholder="cth: PCR Mastermix"></div>
+            <div class="form-group"><label for="newItemRef">Nombor Rujukan</label><input id="newItemRef" type="text" name="ref_number" placeholder="cth: REF-9901"></div>
+            <div class="form-group"><label for="newItemUom">Unit Ukuran</label><input id="newItemUom" type="text" name="uom" placeholder="Botol / Kit / Kotak"></div>
+            <div class="form-group"><label for="newItemBranch">Cawangan Makmal</label><input id="newItemBranch" type="text" name="lab_branch" placeholder="cth: Selcare Rawang"></div>
+            <div class="form-group"><label for="newItemLocation">Lokasi Item</label><input id="newItemLocation" type="text" name="location" placeholder="cth: Peti Sejuk B2"></div>
+            <div class="form-group"><label for="newItemMin">Tahap Minimum</label><input id="newItemMin" type="number" name="min_level" min="0" value="0" data-default-value="0"></div>
+            <div class="form-group"><label for="newItemMax">Tahap Maksimum</label><input id="newItemMax" type="number" name="max_level" min="0" value="0" data-default-value="0"></div>
+            <div class="form-group"><label for="newItemPar">Tahap PAR</label><input id="newItemPar" type="number" name="par_level" min="0" value="0" data-default-value="0"></div>
+            <div class="form-group"><label for="newItemOrderQty">Kuantiti Pesanan</label><input id="newItemOrderQty" type="number" name="ordering_qty" min="0" value="0" data-default-value="0"></div>
+            <p class="add-item-error" id="addItemError" role="alert" hidden></p>
+            <div class="add-item-actions">
+                <button type="button" class="btn btn-secondary" id="cancelAddItem">Batal</button>
+                <button type="submit" class="btn btn-blue" id="saveAddItem">Simpan Item</button>
+            </div>
+        </div>
+    </form>
+</dialog>
+
+<script>
+    const addItemDialog = document.getElementById('addItemDialog');
+    const addItemForm = document.getElementById('addItemForm');
+    const addItemError = document.getElementById('addItemError');
+    const saveAddItem = document.getElementById('saveAddItem');
+    const newItemName = document.getElementById('newItemName');
+
+    newItemName.addEventListener('input', function () {
+        const cursorPosition = this.selectionStart;
+        this.value = this.value.toLocaleUpperCase();
+        this.setSelectionRange(cursorPosition, cursorPosition);
+    });
+
+    document.getElementById('openAddItem').addEventListener('click', function () {
+        addItemDialog.showModal();
+        newItemName.focus();
+    });
+
+    [document.getElementById('closeAddItem'), document.getElementById('cancelAddItem')].forEach(function (button) {
+        button.addEventListener('click', function () {
+            addItemDialog.close();
+        });
+    });
+
+    addItemForm.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        addItemError.hidden = true;
+        saveAddItem.disabled = true;
+        saveAddItem.textContent = 'Menyimpan...';
+
+        try {
+            const response = await fetch('add_item.php?ajax=1', {
+                method: 'POST',
+                body: new FormData(addItemForm),
+                headers: { 'Accept': 'application/json' }
+            });
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || 'Item tidak berjaya disimpan.');
+            }
+
+            addItemDialog.close();
+            await Swal.fire({
+                title: 'Berjaya!',
+                text: 'Item baharu telah berjaya didaftarkan.',
+                icon: 'success',
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#003366'
+            });
+            window.location.href = 'index.php?item_id=' + encodeURIComponent(result.id);
+        } catch (error) {
+            addItemError.textContent = error.message || 'Ralat berlaku semasa menyimpan item.';
+            addItemError.hidden = false;
+        } finally {
+            saveAddItem.disabled = false;
+            saveAddItem.textContent = 'Simpan Item';
+        }
+    });
+</script>
 
 <?php if ($success_message): ?>
 <script>
@@ -486,6 +626,12 @@ if ($selected_item_id > 0) {
             field.addEventListener('focus', function () {
                 if (this.value === defaultValue || this.value === '') {
                     this.value = '';
+                }
+            });
+
+            field.addEventListener('blur', function () {
+                if (this.value === '') {
+                    this.value = defaultValue;
                 }
             });
         });
